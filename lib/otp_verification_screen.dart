@@ -3,6 +3,10 @@ import 'package:flutter/services.dart';
 import 'manage_contacts_screen.dart';
 import 'dart:async';
 
+// Firebase imports
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class OtpVerificationScreen extends StatefulWidget {
   final String phoneNumber;
   final String userName;
@@ -18,9 +22,10 @@ class OtpVerificationScreen extends StatefulWidget {
 }
 
 class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
-  final List<TextEditingController> _controllers = List.generate(6, (_) => TextEditingController());
+  final List<TextEditingController> _controllers =
+      List.generate(6, (_) => TextEditingController());
   final List<FocusNode> _focusNodes = List.generate(6, (_) => FocusNode());
-  
+
   int _resendTimer = 30;
   Timer? _timer;
   bool _canResend = false;
@@ -71,25 +76,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     }
   }
 
-  void _onKeyDown(KeyEvent event, int index) {
-    if (event is KeyDownEvent) {
-      if (event.logicalKey == LogicalKeyboardKey.backspace && 
-          _controllers[index].text.isEmpty && index > 0) {
-        _controllers[index - 1].text = '';
-        _focusNodes[index - 1].requestFocus();
-      }
-      if (event.logicalKey == LogicalKeyboardKey.arrowLeft && index > 0) {
-        _focusNodes[index - 1].requestFocus();
-      }
-      if (event.logicalKey == LogicalKeyboardKey.arrowRight && index < 5) {
-        _focusNodes[index + 1].requestFocus();
-      }
-    }
-  }
-
-  void _verifyOtp() {
+  void _verifyOtp() async {
     String otp = _controllers.map((controller) => controller.text).join();
-    
+
     if (otp.length != 6) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -99,13 +88,10 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       );
       return;
     }
-    
-    // Here you would typically verify the OTP with your backend
-    // For demo purposes, we'll accept any 6-digit code
-    // You can uncomment the validation below for testing
-    
+
+    // DEMO: Accept any 6-digit code
+    // If you want strict demo OTP = "123456", uncomment below:
     /*
-    // Demo: Accept "123456" as valid OTP
     if (otp != "123456") {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -116,39 +102,58 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       return;
     }
     */
-    
-    // Show success message
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('OTP verified successfully for ${widget.userName}!'),
-        backgroundColor: Colors.green,
-        duration: const Duration(seconds: 1),
-      ),
-    );
-    
-    // Small delay to show the success message, then navigate
-    Future.delayed(const Duration(milliseconds: 1500), () {
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (context) => ManageContactsScreen(),
+
+    try {
+      // --- Save user to Firestore ---
+      await FirebaseFirestore.instance
+          .collection("users")
+          .doc(widget.phoneNumber) // using phone number as docId
+          .set({
+        "userName": widget.userName,
+        "phoneNumber": widget.phoneNumber,
+        "verifiedAt": FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      // Success feedback
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('OTP verified & saved for ${widget.userName}!'),
+          backgroundColor: Colors.green,
+          duration: const Duration(seconds: 1),
         ),
       );
-    });
+
+      // Small delay to show success message, then navigate
+      Future.delayed(const Duration(milliseconds: 1500), () {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (context) => ManageContactsScreen(),
+          ),
+        );
+      });
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error saving to Firestore: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   void _resendOtp() {
     if (!_canResend) return;
-    
+
     // Clear all OTP fields
     for (var controller in _controllers) {
       controller.clear();
     }
     _focusNodes[0].requestFocus();
-    
+
     // Restart timer
     _startTimer();
-    
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text('OTP resent to ${widget.phoneNumber}'),
@@ -160,8 +165,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   @override
   Widget build(BuildContext context) {
     final screenHeight = MediaQuery.of(context).size.height;
-    final screenWidth = MediaQuery.of(context).size.width;
-    
+
     return Scaffold(
       backgroundColor: Colors.white,
       body: SafeArea(
@@ -207,25 +211,26 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                         ],
                       ),
                     ),
-                    
-                    // Full Image Section - Made it cover more screen area
+
+                    // Full Image Section
                     Container(
                       width: double.infinity,
-                      height: screenHeight * 0.45, // Increased from 0.4 to 0.45
+                      height: screenHeight * 0.45,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
                         image: const DecorationImage(
                           image: NetworkImage(
-                            "https://lh3.googleusercontent.com/aida-public/AB6AXuCW8MTQB7k9QBIWSvmd9Feh3flOjDfEJuu7RYA8bO_9-pYf74QTBJMEDvX5iJbVHF9fegL9vIhcirniETGQSI-6H99b8LvPuzQtqdBEO5rmteA8-6tTtyQPilyw_q3QXL7tCtVAweGqF0Y8mynJj9D0_z4BU99Ad3mrOL6BFzOv7vRwlheUV_LjpO07dxMnfVBKziWHBY6NY_9mSyhgrM_3ohveugmvjdAD6AJr-gI0KbWpHdxZZ2LKJEewOBtSnJd7gvrDxcq2l-8"
+                            "https://lh3.googleusercontent.com/aida-public/AB6AXuCW8MTQB7k9QBIWSvmd9Feh3flOjDfEJuu7RYA8bO_9-pYf74QTBJMEDvX5iJbVHF9fegL9vIhcirniETGQSI-6H99b8LvPuzQtqdBEO5rmteA8-6tTtyQPilyw_q3QXL7tCtVAweGqF0Y8mynJj9D0_z4BU99Ad3mrOL6BFzOv7vRwlheUV_LjpO07dxMnfVBKziWHBY6NY_9mSyhgrM_3ohveugmvjdAD6AJr-gI0KbWpHdxZZ2LKJEewOBtSnJd7gvrDxcq2l-8",
                           ),
                           fit: BoxFit.cover,
                         ),
                       ),
                     ),
-                    
+
                     // Title
                     const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 16, vertical: 20),
                       child: Text(
                         'Enter Verification Code',
                         style: TextStyle(
@@ -237,10 +242,11 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                         textAlign: TextAlign.center,
                       ),
                     ),
-                    
+
                     // Subtitle with phone number
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                      padding:
+                          const EdgeInsets.fromLTRB(16, 4, 16, 12),
                       child: Text(
                         'A 6-digit code was sent to ${widget.phoneNumber}',
                         style: const TextStyle(
@@ -252,10 +258,11 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                         textAlign: TextAlign.center,
                       ),
                     ),
-                    
+
                     // OTP Input Fields
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 12),
                       child: Center(
                         child: Wrap(
                           alignment: WrapAlignment.center,
@@ -306,8 +313,11 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                                   }
                                 },
                                 onTap: () {
-                                  _controllers[index].selection = TextSelection.fromPosition(
-                                    TextPosition(offset: _controllers[index].text.length),
+                                  _controllers[index].selection =
+                                      TextSelection.fromPosition(
+                                    TextPosition(
+                                        offset:
+                                            _controllers[index].text.length),
                                   );
                                 },
                               ),
@@ -320,13 +330,14 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                 ),
               ),
             ),
-            
+
             // Bottom Section with Buttons
             Column(
               children: [
                 Container(
                   constraints: const BoxConstraints(maxWidth: 480),
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 16, vertical: 12),
                   child: Column(
                     children: [
                       // Verify & Proceed Button
@@ -353,9 +364,9 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                           ),
                         ),
                       ),
-                      
+
                       const SizedBox(height: 12),
-                      
+
                       // Resend Code Button
                       SizedBox(
                         width: double.infinity,
@@ -364,16 +375,16 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                           onPressed: _canResend ? _resendOtp : null,
                           style: TextButton.styleFrom(
                             backgroundColor: Colors.transparent,
-                            foregroundColor: _canResend 
-                                ? const Color(0xFF111317) 
+                            foregroundColor: _canResend
+                                ? const Color(0xFF111317)
                                 : const Color(0xFF646D87),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
                           child: Text(
-                            _canResend 
-                                ? 'Resend Code' 
+                            _canResend
+                                ? 'Resend Code'
                                 : 'Resend Code (${_resendTimer}s)',
                             style: const TextStyle(
                               fontSize: 16,
@@ -386,11 +397,11 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                     ],
                   ),
                 ),
-                
-                // Bottom SVG Container (placeholder for light/dark theme images) - Made smaller
+
+                // Bottom Tagline
                 Container(
                   width: double.infinity,
-                  height: screenHeight * 0.1, // Reduced to give more space to image
+                  height: screenHeight * 0.1,
                   decoration: const BoxDecoration(
                     color: Color(0xFFF0F1F4),
                   ),

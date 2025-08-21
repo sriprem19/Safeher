@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "948203661952",
+    "project_id": "safeher-g575",
+    "storage_bucket": "safeher-g575.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:948203661952:android:fdbb222e083fd5d11bd465",
+        "android_client_info": {
+          "package_name": "com.example.safeher"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAWdDqOrDGLGclXG707_pQr7cyTyzse9ak"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
