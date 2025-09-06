@@ -1,9 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'manage_contacts_screen.dart';
 import 'dart:async';
 
-// Firebase imports
+// Screens / app files
+import 'manage_contacts_screen.dart';
+import 'services/firestore_service.dart';
+import 'services/location_sms_service.dart';
+import 'user_session.dart';
+
+// Firebase (you don't actually need auth here for the demo OTP flow,
+// but keeping imports is fine if you wire real phone auth later)
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -76,8 +82,8 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     }
   }
 
-  void _verifyOtp() async {
-    String otp = _controllers.map((controller) => controller.text).join();
+  Future<void> _verifyOtp() async {
+    final otp = _controllers.map((c) => c.text).join();
 
     if (otp.length != 6) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -89,53 +95,60 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
       return;
     }
 
-    // DEMO: Accept any 6-digit code
-    // If you want strict demo OTP = "123456", uncomment below:
-    /*
-    if (otp != "123456") {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Invalid OTP. Try 123456 for demo.'),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-    */
+    // DEMO: Accept any 6-digit OTP.
+    // If you prefer strict demo OTP "123456", uncomment:
+    // if (otp != "123456") { ... return; }
 
     try {
-      // --- Save user to Firestore ---
-      await FirebaseFirestore.instance
-          .collection("users")
-          .doc(widget.phoneNumber) // using phone number as docId
-          .set({
-        "userName": widget.userName,
-        "phoneNumber": widget.phoneNumber,
-        "verifiedAt": FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      // 1) Set session so other screens can access
+      UserSession.phoneNumber = widget.phoneNumber;
+      UserSession.userName = widget.userName;
 
-      // Success feedback
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('OTP verified & saved for ${widget.userName}!'),
-          backgroundColor: Colors.green,
-          duration: const Duration(seconds: 1),
-        ),
+      // 2) Request location permission
+      final locationPermissionGranted = await LocationSmsService.instance.requestLocationPermission();
+      if (!locationPermissionGranted) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Location permission is required for emergency features'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      }
+
+      // 3) Upsert user profile document in Firestore (phone as doc id)
+      await FirestoreService.instance.upsertUserProfile(
+        userDocId: widget.phoneNumber,
+        userName: widget.userName,
+        phoneNumber: widget.phoneNumber,
       );
 
-      // Small delay to show success message, then navigate
-      Future.delayed(const Duration(milliseconds: 1500), () {
+      // Success feedback
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content:
+                Text('OTP verified & profile ready for ${widget.userName}!'),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 1),
+          ),
+        );
+      }
+
+      // Navigate to Manage Contacts
+      Future.delayed(const Duration(milliseconds: 800), () {
+        if (!mounted) return;
         Navigator.pushReplacement(
           context,
-          MaterialPageRoute(
-            builder: (context) => ManageContactsScreen(),
-          ),
+          MaterialPageRoute(builder: (_) => const ManageContactsScreen()),
         );
       });
     } catch (e) {
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Error saving to Firestore: $e'),
+          content: Text('Error saving profile: $e'),
           backgroundColor: Colors.red,
         ),
       );
@@ -245,8 +258,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
 
                     // Subtitle with phone number
                     Padding(
-                      padding:
-                          const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
                       child: Text(
                         'A 6-digit code was sent to ${widget.phoneNumber}',
                         style: const TextStyle(
@@ -336,8 +348,8 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
               children: [
                 Container(
                   constraints: const BoxConstraints(maxWidth: 480),
-                  padding: const EdgeInsets.symmetric(
-                      horizontal: 16, vertical: 12),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   child: Column(
                     children: [
                       // Verify & Proceed Button
@@ -424,3 +436,4 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     );
   }
 }
+

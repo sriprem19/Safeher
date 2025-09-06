@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'otp_verification_screen.dart'; // Make sure this file exists
+import 'services/location_sms_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -27,6 +29,17 @@ class _LoginScreenState extends State<LoginScreen> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Please fill in both fields.'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      return;
+    }
+
+    // Validate phone number
+    if (!LocationSmsService.instance.isValidMobile(mobile)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Invalid phone number. Must be 10 digits starting with 6-9.'),
           backgroundColor: Colors.red,
         ),
       );
@@ -136,6 +149,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: TextField(
                   controller: _phoneController,
                   keyboardType: TextInputType.phone,
+                  maxLength: 10,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                   decoration: InputDecoration(
                     hintText: 'Mobile Number',
                     hintStyle: const TextStyle(fontFamily: 'Manrope', color: Color(0xFF646D87)),
