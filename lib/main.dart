@@ -4,12 +4,10 @@ import 'dart:async'; // for runZonedGuarded
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart'; // keep for later (contacts storage)
 import 'firebase_options.dart';
 
 import 'safe_her_welcome_screen.dart';
 import 'login_screen.dart';
-import 'otp_verification_screen.dart'; // if you navigate to it elsewhere
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,7 +25,7 @@ Future<void> main() async {
   try {
     runApp(const SafeHerApp());
   } catch (error, stack) {
-    print('App startup error: $error\n$stack');
+    debugPrint('App startup error: $error\n$stack');
   }
 }
 

@@ -52,7 +52,6 @@ class PanicLogsScreen extends StatelessWidget {
                   itemBuilder: (context, index) {
                     final log = logs[index].data();
                     final timestamp = log['timestamp'] as Timestamp?;
-                    final message = log['message'] as String? ?? '';
                     final locationLink = log['locationLink'] as String?;
                     final contactResults = (log['contactResults'] as List<dynamic>?) ?? [];
 
@@ -115,7 +114,7 @@ class PanicLogsScreen extends StatelessWidget {
                               final name = result['name'] as String? ?? '';
                               final phone = result['phone'] as String? ?? '';
                               final status = result['status'] as String? ?? '';
-                              final isSuccess = status == 'SMS sent successfully';
+                              final isSuccess = status.contains('SMS app opened');
 
                               return Padding(
                                 padding: const EdgeInsets.symmetric(vertical: 4),
@@ -139,7 +138,7 @@ class PanicLogsScreen extends StatelessWidget {
                                   ],
                                 ),
                               );
-                            }).toList(),
+                            }),
                           ],
                         ),
                       ),

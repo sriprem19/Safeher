@@ -103,13 +103,18 @@ class _PanicButtonScreenState extends State<PanicButtonScreen> {
 
                               // 2) Send emergency alert with location and area details
                               final name = UserSession.userName ?? 'Your contact';
-                              final results = await LocationSmsService.instance
-                                  .sendEmergencyAlert(contacts: contacts, userName: name);
+                              final locationService = LocationSmsService();
+                              final results = await locationService
+                                  .sendAlertToContacts(contacts, name);
 
                               // 3) Get location details for logging
-                              final locationDetails = await LocationSmsService.instance.getCurrentLocationDetails();
-                              final link = locationDetails['link'];
-                              final area = locationDetails['area'] ?? 'Unknown area';
+                              final position = await locationService.getCurrentLocation();
+                              String? link;
+                              String area = 'Unknown area';
+                              if (position != null) {
+                                link = 'https://www.google.com/maps/search/?api=1&query=${position.latitude},${position.longitude}';
+                                area = 'Lat: ${position.latitude}, Lng: ${position.longitude}';
+                              }
                               final msg = '🚨 SafeHer ALERT! ${name} may be in danger.\nLocation: ${area}\n${link != null ? 'Live location: $link' : 'Location not available.'}\nPlease call/check immediately.';
 
                               // 5) Save panic log
@@ -121,7 +126,7 @@ class _PanicButtonScreenState extends State<PanicButtonScreen> {
                               );
 
                               if (!mounted) return;
-                              final anySuccess = results.any((r) => (r['status'] ?? '') == 'SMS sent successfully');
+                              final anySuccess = results.any((r) => (r['status'] ?? '').contains('SMS app opened'));
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(anySuccess
@@ -142,7 +147,7 @@ class _PanicButtonScreenState extends State<PanicButtonScreen> {
                                     color: Colors.red.withOpacity(0.3),
                                     spreadRadius: 5,
                                     blurRadius: 15,
-                                    offset: Offset(0, 3),
+                                    offset: const Offset(0, 3),
                                   ),
                                 ],
                               ),

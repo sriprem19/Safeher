@@ -1,6 +1,7 @@
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'otp_verification_screen.dart'; // Make sure this file exists
+import 'otp_verification_screen.dart';
 import 'services/location_sms_service.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -13,6 +14,7 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
+  bool _isLoading = false;
 
   @override
   void dispose() {
@@ -21,7 +23,7 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _sendOtp() {
+  Future<void> _sendOtp() async {
     final name = _nameController.text.trim();
     final mobile = _phoneController.text.trim();
 
@@ -35,8 +37,7 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    // Validate phone number
-    if (!LocationSmsService.instance.isValidMobile(mobile)) {
+    if (!LocationSmsService.isValidMobile(mobile)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Invalid phone number. Must be 10 digits starting with 6-9.'),
@@ -45,15 +46,59 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       return;
     }
-    
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => OtpVerificationScreen(
-          userName: name,
-          phoneNumber: mobile,
-        ),
-      ),
+
+    setState(() {
+      _isLoading = true;
+    });
+
+    final phoneNumber = "+91$mobile";
+
+    await FirebaseAuth.instance.verifyPhoneNumber(
+      phoneNumber: phoneNumber,
+      verificationCompleted: (PhoneAuthCredential credential) async {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Verification Completed")),
+        );
+        // Consider signing in the user automatically
+        // await FirebaseAuth.instance.signInWithCredential(credential);
+      },
+      verificationFailed: (FirebaseAuthException e) {
+        setState(() {
+          _isLoading = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Failed to Verify Phone Number: ${e.message}"),
+            backgroundColor: Colors.red,
+          ),
+        );
+      },
+      codeSent: (String verificationId, int? resendToken) {
+        setState(() {
+          _isLoading = false;
+        });
+        if (mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => OtpVerificationScreen(
+                userName: name,
+                phoneNumber: mobile,
+                verificationId: verificationId, // Pass verificationId
+              ),
+            ),
+          );
+        }
+      },
+      codeAutoRetrievalTimeout: (String verificationId) {
+        setState(() {
+          _isLoading = false;
+        });
+      },
+      timeout: const Duration(seconds: 60),
     );
   }
 
@@ -92,9 +137,8 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: Text(
                   'Welcome Back',
                   textAlign: TextAlign.center,
-                  // Changed from GoogleFonts.manrope
                   style: const TextStyle(
-                    fontFamily: 'Manrope', // Assumes 'Manrope' is the family name in pubspec.yaml
+                    fontFamily: 'Manrope',
                     color: Color(0xFF111317),
                     fontSize: 28,
                     fontWeight: FontWeight.bold,
@@ -176,7 +220,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 child: SizedBox(
                   height: 48,
                   child: ElevatedButton(
-                    onPressed: _sendOtp,
+                    onPressed: _isLoading ? null : _sendOtp,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF3F68E4),
                       foregroundColor: Colors.white,
@@ -185,15 +229,17 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       elevation: 0,
                     ),
-                    child: const Text(
-                      'Send OTP',
-                      style: TextStyle(
-                        fontFamily: 'Manrope',
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                        letterSpacing: 0.2,
-                      ),
-                    ),
+                    child: _isLoading
+                        ? const CircularProgressIndicator(color: Colors.white)
+                        : const Text(
+                            'Send OTP',
+                            style: TextStyle(
+                              fontFamily: 'Manrope',
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.2,
+                            ),
+                          ),
                   ),
                 ),
               ),

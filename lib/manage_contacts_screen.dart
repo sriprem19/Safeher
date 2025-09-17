@@ -40,7 +40,7 @@ class _ManageContactsScreenState extends State<ManageContactsScreen> {
     // Validate each contact phone number
     for (var contact in _contacts) {
       final phone = contact['phone'] ?? '';
-      if (!LocationSmsService.instance.isValidMobile(phone)) {
+      if (!LocationSmsService.isValidMobile(phone)) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Invalid phone number: $phone. Must be 10 digits starting with 6-9.')),
         );
@@ -188,7 +188,7 @@ class _ManageContactsScreenState extends State<ManageContactsScreen> {
                                           if (v == null || v.trim().isEmpty) {
                                             return 'Phone required';
                                           }
-                                          if (!LocationSmsService.instance.isValidMobile(v.trim())) {
+                                          if (!LocationSmsService.isValidMobile(v.trim())) {
                                             return 'Must be 10 digits starting with 6-9';
                                           }
                                           return null;

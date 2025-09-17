@@ -8,19 +8,20 @@ import 'services/firestore_service.dart';
 import 'services/location_sms_service.dart';
 import 'user_session.dart';
 
-// Firebase (you don't actually need auth here for the demo OTP flow,
-// but keeping imports is fine if you wire real phone auth later)
+// Firebase
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:geolocator/geolocator.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
   final String phoneNumber;
   final String userName;
+  final String verificationId; // <-- Add this
 
   const OtpVerificationScreen({
     Key? key,
     required this.phoneNumber,
     required this.userName,
+    required this.verificationId, // <-- Add this
   }) : super(key: key);
 
   @override
@@ -35,6 +36,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
   int _resendTimer = 30;
   Timer? _timer;
   bool _canResend = false;
+  bool _isVerifying = false;
 
   @override
   void initState() {
@@ -58,6 +60,10 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     _canResend = false;
     _resendTimer = 30;
     _timer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
       setState(() {
         if (_resendTimer > 0) {
           _resendTimer--;
@@ -69,110 +75,102 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     });
   }
 
-  void _onChanged(String value, int index) {
-    if (value.length == 1 && index < 5) {
-      _focusNodes[index + 1].requestFocus();
-    }
-    if (value.length > 1) {
-      _controllers[index].text = value[0];
-      if (index < 5) {
-        _controllers[index + 1].text = value.substring(1);
-        _focusNodes[index + 1].requestFocus();
-      }
-    }
-  }
-
   Future<void> _verifyOtp() async {
     final otp = _controllers.map((c) => c.text).join();
 
     if (otp.length != 6) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('Please enter complete 6-digit OTP'),
+          content: Text('Please enter a complete 6-digit OTP'),
           backgroundColor: Colors.red,
         ),
       );
       return;
     }
 
-    // DEMO: Accept any 6-digit OTP.
-    // If you prefer strict demo OTP "123456", uncomment:
-    // if (otp != "123456") { ... return; }
+    setState(() {
+      _isVerifying = true;
+    });
 
     try {
-      // 1) Set session so other screens can access
-      UserSession.phoneNumber = widget.phoneNumber;
-      UserSession.userName = widget.userName;
-
-      // 2) Request location permission
-      final locationPermissionGranted = await LocationSmsService.instance.requestLocationPermission();
-      if (!locationPermissionGranted) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Location permission is required for emergency features'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-        }
-      }
-
-      // 3) Upsert user profile document in Firestore (phone as doc id)
-      await FirestoreService.instance.upsertUserProfile(
-        userDocId: widget.phoneNumber,
-        userName: widget.userName,
-        phoneNumber: widget.phoneNumber,
+      PhoneAuthCredential credential = PhoneAuthProvider.credential(
+        verificationId: widget.verificationId,
+        smsCode: otp,
       );
 
-      // Success feedback
+      // Sign the user in (or link) with the credential
+      final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+
+      if (userCredential.user != null) {
+        // 1) Set session so other screens can access
+        UserSession.phoneNumber = widget.phoneNumber;
+        UserSession.userName = widget.userName;
+
+        // 2) Request location permission
+        await Geolocator.requestPermission();
+
+        // 3) Upsert user profile document in Firestore
+        await FirestoreService.instance.upsertUserProfile(
+          userDocId: widget.phoneNumber,
+          userName: widget.userName,
+          phoneNumber: widget.phoneNumber,
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Welcome, ${widget.userName}!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          Navigator.pushAndRemoveUntil(
+            context,
+            MaterialPageRoute(builder: (_) => const ManageContactsScreen()),
+            (route) => false, // Clear navigation stack
+          );
+        }
+      } else {
+        throw Exception('Failed to sign in.');
+      }
+    } on FirebaseAuthException catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content:
-                Text('OTP verified & profile ready for ${widget.userName}!'),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 1),
+            content: Text('Error: ${e.message}'),
+            backgroundColor: Colors.red,
           ),
         );
       }
-
-      // Navigate to Manage Contacts
-      Future.delayed(const Duration(milliseconds: 800), () {
-        if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (_) => const ManageContactsScreen()),
-        );
-      });
     } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Error saving profile: $e'),
-          backgroundColor: Colors.red,
-        ),
-      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('An unexpected error occurred: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isVerifying = false;
+        });
+      }
     }
   }
 
   void _resendOtp() {
     if (!_canResend) return;
 
-    // Clear all OTP fields
-    for (var controller in _controllers) {
-      controller.clear();
-    }
-    _focusNodes[0].requestFocus();
-
-    // Restart timer
-    _startTimer();
-
+    // This would require re-triggering the verifyPhoneNumber method from the login screen.
+    // For simplicity, we'll just pop back.
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('OTP resent to ${widget.phoneNumber}'),
+      const SnackBar(
+        content: Text('Please go back to re-enter your phone number.'),
         backgroundColor: Colors.blue,
       ),
     );
+    Navigator.of(context).pop();
   }
 
   @override
@@ -357,7 +355,7 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                         width: double.infinity,
                         height: 48,
                         child: ElevatedButton(
-                          onPressed: _verifyOtp,
+                          onPressed: _isVerifying ? null : _verifyOtp,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF3F68E4),
                             foregroundColor: Colors.white,
@@ -366,14 +364,16 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
                               borderRadius: BorderRadius.circular(12),
                             ),
                           ),
-                          child: const Text(
-                            'Verify & Proceed',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.015,
-                            ),
-                          ),
+                          child: _isVerifying
+                              ? const CircularProgressIndicator(color: Colors.white)
+                              : const Text(
+                                  'Verify & Proceed',
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.015,
+                                  ),
+                                ),
                         ),
                       ),
 
