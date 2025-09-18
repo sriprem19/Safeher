@@ -1,13 +1,14 @@
 // lib/user_session.dart
-import 'package:firebase_auth/firebase_auth.dart';
+import 'services/supabase_auth_service.dart';
 
 class UserSession {
   static String? userName;
   static String? phoneNumber;
 
-  /// Prefer Firebase Auth UID if signed in; else derive a stable id from userName.
+  /// Prefer Supabase Auth UID if signed in; else derive a stable id from userName.
   static String get userId {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
+    final user = SupabaseAuthService.getCurrentUser();
+    final uid = user?.id;
     if (uid != null && uid.isNotEmpty) return uid;
 
     // Fallback: derived id from name (lowercase, underscores). Avoid spaces/specials.
@@ -25,4 +26,11 @@ class UserSession {
   }
 
   static bool get isReady => userId.isNotEmpty;
+  
+  /// Sign out from Supabase
+  static Future<void> signOut() async {
+    await SupabaseAuthService.signOut();
+    userName = null;
+    phoneNumber = null;
+  }
 }

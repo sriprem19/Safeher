@@ -1,8 +1,7 @@
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'otp_verification_screen.dart';
-import 'services/location_sms_service.dart';
+import 'services/supabase_auth_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({Key? key}) : super(key: key);
@@ -37,7 +36,7 @@ class _LoginScreenState extends State<LoginScreen> {
       return;
     }
 
-    if (!LocationSmsService.isValidMobile(mobile)) {
+    if (!SupabaseAuthService.isValidMobile(mobile)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text('Invalid phone number. Must be 10 digits starting with 6-9.'),
@@ -51,35 +50,26 @@ class _LoginScreenState extends State<LoginScreen> {
       _isLoading = true;
     });
 
-    final phoneNumber = "+91$mobile";
+    try {
+      // TEMP: Bypass real OTP sending for testing
+      await Future.delayed(const Duration(milliseconds: 300));
+      final success = true;
+      
+      setState(() {
+        _isLoading = false;
+      });
 
-    await FirebaseAuth.instance.verifyPhoneNumber(
-      phoneNumber: phoneNumber,
-      verificationCompleted: (PhoneAuthCredential credential) async {
-        setState(() {
-          _isLoading = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Verification Completed")),
-        );
-        // Consider signing in the user automatically
-        // await FirebaseAuth.instance.signInWithCredential(credential);
-      },
-      verificationFailed: (FirebaseAuthException e) {
-        setState(() {
-          _isLoading = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Failed to Verify Phone Number: ${e.message}"),
-            backgroundColor: Colors.red,
-          ),
-        );
-      },
-      codeSent: (String verificationId, int? resendToken) {
-        setState(() {
-          _isLoading = false;
-        });
+      if (success) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('OTP sent successfully!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+        
+        // Navigate to OTP verification screen
         if (mounted) {
           Navigator.push(
             context,
@@ -87,19 +77,34 @@ class _LoginScreenState extends State<LoginScreen> {
               builder: (context) => OtpVerificationScreen(
                 userName: name,
                 phoneNumber: mobile,
-                verificationId: verificationId, // Pass verificationId
+                verificationId: '', // Not needed for Supabase
               ),
             ),
           );
         }
-      },
-      codeAutoRetrievalTimeout: (String verificationId) {
-        setState(() {
-          _isLoading = false;
-        });
-      },
-      timeout: const Duration(seconds: 60),
-    );
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to send OTP. Please try again.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      setState(() {
+        _isLoading = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override

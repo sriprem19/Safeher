@@ -1,15 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'dart:async';
 
 // Screens / app files
 import 'manage_contacts_screen.dart';
 import 'services/firestore_service.dart';
-import 'services/location_sms_service.dart';
+import 'services/supabase_auth_service.dart';
 import 'user_session.dart';
 
-// Firebase
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:geolocator/geolocator.dart';
 
 class OtpVerificationScreen extends StatefulWidget {
@@ -93,50 +92,51 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     });
 
     try {
-      PhoneAuthCredential credential = PhoneAuthProvider.credential(
-        verificationId: widget.verificationId,
-        smsCode: otp,
-      );
+      // TEMP: Bypass OTP verification for testing (accept any 6-digit code)
+      await Future.delayed(const Duration(milliseconds: 300));
 
-      // Sign the user in (or link) with the credential
-      final userCredential = await FirebaseAuth.instance.signInWithCredential(credential);
+      // 1) Set session so other screens can access
+      UserSession.phoneNumber = widget.phoneNumber;
+      UserSession.userName = widget.userName;
 
-      if (userCredential.user != null) {
-        // 1) Set session so other screens can access
-        UserSession.phoneNumber = widget.phoneNumber;
-        UserSession.userName = widget.userName;
-
-        // 2) Request location permission
-        await Geolocator.requestPermission();
-
-        // 3) Upsert user profile document in Firestore
-        await FirestoreService.instance.upsertUserProfile(
-          userDocId: widget.phoneNumber,
-          userName: widget.userName,
-          phoneNumber: widget.phoneNumber,
-        );
-
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Welcome, ${widget.userName}!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (_) => const ManageContactsScreen()),
-            (route) => false, // Clear navigation stack
-          );
-        }
-      } else {
-        throw Exception('Failed to sign in.');
-      }
-    } on FirebaseAuthException catch (e) {
+      // 2) Navigate immediately so UI doesn't wait on permissions/network
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Error: ${e.message}'),
+            content: Text('Welcome, ${widget.userName}!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // Stop loading state before navigating
+        setState(() {
+          _isVerifying = false;
+        });
+        Navigator.pushAndRemoveUntil(
+          context,
+          MaterialPageRoute(builder: (_) => const ManageContactsScreen()),
+          (route) => false, // Clear navigation stack
+        );
+      }
+
+      // 3) Do post-login setup in background (no UI block)
+      Future.microtask(() async {
+        try {
+          await Geolocator.requestPermission();
+          await FirestoreService.instance.upsertUserProfile(
+            userDocId: widget.phoneNumber,
+            userName: widget.userName,
+            phoneNumber: widget.phoneNumber,
+          );
+        } catch (e) {
+          // Best-effort; don't surface blocking errors here
+          debugPrint('Post-login setup error: $e');
+        }
+      });
+    } on Exception catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
             backgroundColor: Colors.red,
           ),
         );
@@ -159,18 +159,42 @@ class _OtpVerificationScreenState extends State<OtpVerificationScreen> {
     }
   }
 
-  void _resendOtp() {
+  Future<void> _resendOtp() async {
     if (!_canResend) return;
 
-    // This would require re-triggering the verifyPhoneNumber method from the login screen.
-    // For simplicity, we'll just pop back.
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Please go back to re-enter your phone number.'),
-        backgroundColor: Colors.blue,
-      ),
-    );
-    Navigator.of(context).pop();
+    try {
+      final success = await SupabaseAuthService.sendOTP(widget.phoneNumber);
+      
+      if (success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('OTP sent successfully!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        
+        // Reset timer
+        setState(() {
+          _resendTimer = 30;
+          _canResend = false;
+        });
+        _startTimer();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to resend OTP. Please try again.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override

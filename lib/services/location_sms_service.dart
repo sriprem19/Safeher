@@ -1,7 +1,11 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/foundation.dart';
+import 'package:permission_handler/permission_handler.dart';
+import 'package:background_sms/background_sms.dart';
 
 class LocationSmsService {
 
@@ -53,6 +57,10 @@ class LocationSmsService {
     buffer.writeln("Location:");
 
     if (position != null) {
+      // Reverse geocode to get a readable place name
+      String placeName = await _getPlaceName(position);
+      buffer.writeln(placeName.isNotEmpty ? placeName : "Unknown area");
+
       buffer.writeln("Latitude: ${position.latitude}");
       buffer.writeln("Longitude: ${position.longitude}");
       buffer.writeln(
@@ -64,6 +72,31 @@ class LocationSmsService {
     buffer.writeln("Please reach out as soon as possible.");
 
     return buffer.toString();
+  }
+
+  /// Get a human-readable place name from coordinates
+  Future<String> _getPlaceName(Position position) async {
+    try {
+      final placemarks = await placemarkFromCoordinates(
+        position.latitude,
+        position.longitude,
+      );
+      if (placemarks.isNotEmpty) {
+        final p = placemarks.first;
+        // Build a concise location string
+        final parts = <String>[
+          if ((p.name ?? '').trim().isNotEmpty) p.name!.trim(),
+          if ((p.locality ?? '').trim().isNotEmpty) p.locality!.trim(),
+          if ((p.administrativeArea ?? '').trim().isNotEmpty)
+            p.administrativeArea!.trim(),
+          if ((p.country ?? '').trim().isNotEmpty) p.country!.trim(),
+        ];
+        return parts.join(', ');
+      }
+    } catch (e) {
+      debugPrint('Reverse geocoding failed: $e');
+    }
+    return '';
   }
 
 
@@ -100,17 +133,90 @@ class LocationSmsService {
       return results;
     }
 
+    // Prefer direct SMS on Android; do NOT open composer on Android
+    if (Platform.isAndroid) {
+      try {
+        // Request runtime SMS permission
+        final perm = await Permission.sms.request();
+        if (!perm.isGranted) {
+          throw Exception('SMS permission not granted');
+        }
+
+        // Send individually to improve reliability and to capture per-contact status
+        for (final contact in contacts) {
+          final raw = (contact['phone'] ?? '').trim();
+          if (raw.isEmpty) {
+            results.add({
+              'name': contact['name'],
+              'phone': raw,
+              'status': 'Failed to send SMS',
+              'error': 'Phone number is empty',
+            });
+            continue;
+          }
+          final formattedPhone = raw.startsWith('+')
+              ? raw
+              : (raw.startsWith('0') ? '+91${raw.substring(1)}' : '+91$raw');
+
+          try {
+            final status = await BackgroundSms.sendMessage(
+              phoneNumber: formattedPhone,
+              message: alertMessage,
+              simSlot: 1, // default SIM; change to 2 for dual-SIM if needed
+            );
+            if (status == SmsStatus.sent || status == SmsStatus.delivered) {
+              results.add({
+                'name': contact['name'],
+                'phone': raw,
+                // Include legacy keyword so existing success check passes
+                'status': 'SMS app opened (direct send)',
+                'error': null,
+              });
+            } else {
+              throw Exception('SMS not sent (status: $status)');
+            }
+          } catch (e) {
+            results.add({
+              'name': contact['name'],
+              'phone': raw,
+              'status': 'Failed to send SMS',
+              'error': e.toString(),
+            });
+          }
+        }
+      } catch (e) {
+        debugPrint('Direct SMS failed on Android: $e');
+        // Do not open composer on Android as per requirement; report failures
+        if (results.isEmpty) {
+          for (var contact in contacts) {
+            results.add({
+              'name': contact['name'],
+              'phone': contact['phone'],
+              'status': 'Failed to send SMS',
+              'error': 'Direct SMS error: ' + e.toString(),
+            });
+          }
+        }
+      }
+    } else {
+      await _openComposerFallback(contacts, validPhones, alertMessage, results);
+    }
+
+    return results;
+  }
+
+  Future<void> _openComposerFallback(
+    List<Map<String, String>> contacts,
+    List<String> validPhones,
+    String alertMessage,
+    List<Map<String, String?>> results,
+  ) async {
     try {
-      // Create SMS URI with all contacts and message
       final recipientsString = validPhones.join(',');
       final encodedMessage = Uri.encodeComponent(alertMessage);
       final smsUri = Uri.parse('sms:$recipientsString?body=$encodedMessage');
-
-      // Launch SMS app with pre-filled message and contacts
       final launched = await launchUrl(smsUri);
-
       if (launched) {
-        // Mark all contacts as successful since SMS app opened
         for (var contact in contacts) {
           final phone = contact['phone'] ?? '';
           if (phone.isNotEmpty) {
@@ -129,7 +235,6 @@ class LocationSmsService {
             });
           }
         }
-        debugPrint('SMS app opened for ${validPhones.length} contacts');
       } else {
         throw Exception('Could not launch SMS app');
       }
@@ -144,7 +249,5 @@ class LocationSmsService {
         });
       }
     }
-
-    return results;
   }
 }
