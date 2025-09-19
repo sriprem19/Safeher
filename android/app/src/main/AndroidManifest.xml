@@ -1,5 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.example.Safeher">
+    package="com.example.safeher">
     <!-- Direct SMS permission for panic button (Android only) -->
     <uses-permission android:name="android.permission.SEND_SMS" />
     <!-- Location permissions (already used for panic location) -->

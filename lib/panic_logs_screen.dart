@@ -114,7 +114,7 @@ class PanicLogsScreen extends StatelessWidget {
                               final name = result['name'] as String? ?? '';
                               final phone = result['phone'] as String? ?? '';
                               final status = result['status'] as String? ?? '';
-                              final isSuccess = status.contains('SMS app opened');
+                              final isSuccess = status.contains('SMS sent successfully') || status.contains('SMS app opened');
 
                               return Padding(
                                 padding: const EdgeInsets.symmetric(vertical: 4),

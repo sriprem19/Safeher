@@ -4,10 +4,12 @@ import 'package:geolocator/geolocator.dart';
 import 'package:geocoding/geocoding.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'package:background_sms/background_sms.dart';
 
 class LocationSmsService {
+
+  static const MethodChannel _smsChannel = MethodChannel('com.example.safeher/sms');
 
   /// Validate Indian mobile number (10 digits starting with 6-9)
   static bool isValidMobile(String mobile) {
@@ -159,23 +161,27 @@ class LocationSmsService {
               : (raw.startsWith('0') ? '+91${raw.substring(1)}' : '+91$raw');
 
           try {
-            final status = await BackgroundSms.sendMessage(
-              phoneNumber: formattedPhone,
-              message: alertMessage,
-              simSlot: 1, // default SIM; change to 2 for dual-SIM if needed
-            );
-            if (status == SmsStatus.sent || status == SmsStatus.delivered) {
+            debugPrint('SafeHer: Attempting to send SMS to $formattedPhone');
+            debugPrint('SafeHer: Message length: ${alertMessage.length}');
+            
+            final ok = await _smsChannel.invokeMethod<bool>('sendSms', {
+              'phone': formattedPhone,
+              'message': alertMessage,
+            });
+            
+            if (ok == true) {
+              debugPrint('SafeHer: SMS sent successfully to ${contact['name']} ($raw)');
               results.add({
                 'name': contact['name'],
                 'phone': raw,
-                // Include legacy keyword so existing success check passes
-                'status': 'SMS app opened (direct send)',
+                'status': 'SMS sent successfully',
                 'error': null,
               });
             } else {
-              throw Exception('SMS not sent (status: $status)');
+              throw Exception('Native sendSms returned false');
             }
           } catch (e) {
+            debugPrint('SafeHer: SMS failed for ${contact['name']} ($raw): $e');
             results.add({
               'name': contact['name'],
               'phone': raw,

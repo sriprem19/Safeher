@@ -75,7 +75,7 @@ class _PanicButtonScreenState extends State<PanicButtonScreen> {
                             onTap: () {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
-                                  content: Text('Tap and hold to send real emergency alert'),
+                                  content: Text(''),
                                   backgroundColor: Colors.orange,
                                   duration: Duration(seconds: 2),
                                 ),
@@ -92,7 +92,7 @@ class _PanicButtonScreenState extends State<PanicButtonScreen> {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text('EMERGENCY ALERT ACTIVATED! Sending SMS...'),
-                                  backgroundColor: Colors.red,
+                                  backgroundColor: Colors.green,
                                   duration: Duration(seconds: 2),
                                 ),
                               );
@@ -126,7 +126,7 @@ class _PanicButtonScreenState extends State<PanicButtonScreen> {
                               );
 
                               if (!mounted) return;
-                              final anySuccess = results.any((r) => (r['status'] ?? '').contains('SMS app opened'));
+                              final anySuccess = results.any((r) => (r['status'] ?? '').contains('SMS sent successfully') || (r['status'] ?? '').contains('SMS app opened'));
                               ScaffoldMessenger.of(context).showSnackBar(
                                 SnackBar(
                                   content: Text(anySuccess
