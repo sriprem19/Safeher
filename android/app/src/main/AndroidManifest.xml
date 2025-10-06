@@ -5,6 +5,9 @@
     <!-- Location permissions (already used for panic location) -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Declare GPS hardware capability; set required to false to allow install on devices without GPS
+         but prefer GPS when available for offline positioning. -->
+    <uses-feature android:name="android.hardware.location.gps" android:required="false" />
     
     <application
         android:label="safeher"
@@ -50,3 +53,4 @@
         </intent>
     </queries>
 </manifest>
+

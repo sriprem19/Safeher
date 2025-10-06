@@ -33,6 +33,33 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.13.1
+  flutter_native_splash: ^2.4.1
 
 flutter:
   uses-material-design: true
+
+# Launcher icon configuration
+flutter_launcher_icons:
+  image_path: assets/icon.png
+  android: true
+  ios: true
+  web:
+    generate: true
+    background_color: "#ffffff"
+    theme_color: "#1EA7FD"
+  macos:
+    generate: true
+  windows:
+    generate: true
+
+# Native splash screen configuration (no logo, plain color)
+flutter_native_splash:
+  android: true
+  ios: true
+  web: true
+  color: "#FFFFFF"   # Background color while app initializes
+  android_12:
+    color: "#FFFFFF"
+  # No 'image' specified on purpose to avoid showing any logo
+  fullscreen: true
